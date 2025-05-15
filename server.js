@@ -136,6 +136,58 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
+// GET /api/register – Get all registered users
+app.get('/api/register', async (req, res) => {
+  try {
+    const users = await User.find().select('-password'); // Exclude password
+    res.status(200).json(users);
+  } catch (err) {
+    console.error("Error fetching users:", err);
+    res.status(500).json({ message: "Failed to retrieve users." });
+  }
+});
+
+// PUT /api/register/:id – Update user by ID
+app.put('/api/register/:id', async (req, res) => {
+  const { id } = req.params;
+  const { fname, lname, phone } = req.body;
+
+  try {
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      { fname, lname, phone },
+      { new: true, runValidators: true }
+    ).select('-password'); // Exclude password
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    res.status(200).json({ message: "User updated successfully.", user: updatedUser });
+  } catch (err) {
+    console.error("Update error:", err);
+    res.status(500).json({ message: "Failed to update user." });
+  }
+});
+
+// DELETE /api/register/:id – Delete user by ID
+app.delete('/api/register/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const deletedUser = await User.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    res.status(200).json({ message: "User deleted successfully." });
+  } catch (err) {
+    console.error("Delete error:", err);
+    res.status(500).json({ message: "Failed to delete user." });
+  }
+});
+
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
