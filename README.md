@@ -18,26 +18,6 @@ Welcome to the **Auth API**, a simple and secure RESTful backend built with **Ex
 
 ---
 
-## 📁 Folder Structure
-
-```
-
-backend/
-│
-├── models/
-│   └── User.js           # Mongoose user schema
-│
-├── routes/
-│   └── auth.js           # All auth-related routes
-│
-├── .env                  # Environment variables
-├── server.js             # Main Express app
-└── package.json
-
-````
-
----
-
 ## 🔧 Installation & Setup
 
 1. **Clone the repository:**
