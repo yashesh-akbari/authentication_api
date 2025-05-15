@@ -2,38 +2,17 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
-const User = require('./models/User'); // Your Mongoose User model
+const User = require('./models/User'); // Mongoose User model
 require('dotenv').config();
 
 const app = express();
 const port = 5000;
 
+// Middleware
 app.use(cors());
 app.use(express.json());
-app.use('/api', require('./routes/auth'));
 
-
-// List of temporary email providers
-const tempEmailProviders = [
-  "tempmail.com", "mailinator.com", "yopmail.com", "guerrillamail.com"
-];
-
-// Utility to check if email is temporary
-const isTemporaryEmail = (email) => {
-  const domain = email.split('@')[1];
-  return tempEmailProviders.includes(domain);
-};
-
-// Password validation utility
-const isValidPassword = (password) => {
-  const length = password.length >= 8 && password.length <= 20;
-  const uppercase = /[A-Z]/.test(password);
-  const lowercase = /[a-z]/.test(password);
-  const number = /\d/.test(password);
-  const specialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
-  return length && uppercase && lowercase && number && specialChar;
-};
-
+// Root route
 app.get("/", (req, res) => {
   res.send(`
     <div style="font-family: Arial, sans-serif; padding: 20px;">
@@ -56,76 +35,115 @@ app.get("/", (req, res) => {
   `);
 });
 
-// Connect to MongoDB and start the server
+// List of temporary email providers
+const tempEmailProviders = [
+  "tempmail.com", "mailinator.com", "yopmail.com", "guerrillamail.com"
+];
+
+// Utility: check for temp email
+const isTemporaryEmail = (email) => {
+  const domain = email.split('@')[1];
+  return tempEmailProviders.includes(domain);
+};
+
+// Utility: password validation
+const isValidPassword = (password) => {
+  const length = password.length >= 8 && password.length <= 20;
+  const uppercase = /[A-Z]/.test(password);
+  const lowercase = /[a-z]/.test(password);
+  const number = /\d/.test(password);
+  const specialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  return length && uppercase && lowercase && number && specialChar;
+};
+
+// POST /api/register
+app.post('/api/register', async (req, res) => {
+  const { fname, lname, email, phone, password } = req.body;
+  const errors = [];
+
+  // First Name
+  if (!fname || typeof fname !== 'string' || fname.trim().length < 3) {
+    errors.push("First name must be at least 3 characters long.");
+  }
+
+  // Last Name
+  if (!lname || typeof lname !== 'string' || lname.trim().length < 3) {
+    errors.push("Last name must be at least 3 characters long.");
+  }
+
+  // Email
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    errors.push("A valid email is required.");
+  } else {
+    const domain = email.split('@')[1];
+    if (isTemporaryEmail(email)) {
+      errors.push("Temporary email addresses are not allowed.");
+    }
+  }
+
+  // Phone
+  if (!phone || !/^\d{10}$/.test(phone)) {
+    errors.push("Phone number must be exactly 10 digits.");
+  }
+
+  // Password
+  if (!password || typeof password !== 'string') {
+    errors.push("Password is required.");
+  } else if (!isValidPassword(password)) {
+    errors.push("Password must include 1 uppercase letter, 1 lowercase letter, 1 number, 1 special character, and be 8-20 characters long.");
+  }
+
+  // Return all validation errors
+  if (errors.length > 0) {
+    return res.status(400).json({ errors });
+  }
+
+  try {
+    // Check for duplicates
+    const [existingEmail, existingPhone] = await Promise.all([
+      User.findOne({ email }),
+      User.findOne({ phone }),
+    ]);
+
+    if (existingEmail) {
+      errors.push("Email is already registered.");
+    }
+    if (existingPhone) {
+      errors.push("Phone number is already registered.");
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).json({ errors });
+    }
+
+    // Hash password and create user
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = new User({
+      fname: fname.trim(),
+      lname: lname.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      password: hashedPassword,
+    });
+
+    await newUser.save();
+    res.status(201).json({ message: "Account created successfully!" });
+
+  } catch (err) {
+    console.error("Registration error:", err);
+    res.status(500).json({ message: "Something went wrong. Please try again later." });
+  }
+});
+
+// Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB Atlas');
-
-    // Register route
-    app.post('/api/register', async (req, res) => {
-      const { fname, lname, email, phone, password } = req.body;
-
-      // Name validation
-      if (fname.length < 3 || lname.length < 3) {
-        return res.status(400).json({ message: 'First and last name must be at least 3 characters long.' });
-      }
-
-      // Email validation
-      if (isTemporaryEmail(email)) {
-        return res.status(400).json({ message: 'Temporary email addresses are not allowed.' });
-      }
-
-      // Phone validation
-      if (!/^\d{10}$/.test(phone)) {
-        return res.status(400).json({ message: 'Phone number must be exactly 10 digits.' });
-      }
-
-      // Password validation
-      if (!isValidPassword(password)) {
-        return res.status(400).json({
-          message: 'Password must include 1 uppercase letter, 1 lowercase letter, 1 number, 1 special character, and be 8-20 characters long.'
-        });
-      }
-
-      try {
-        // Check for existing email
-        const existingEmail = await User.findOne({ email });
-        if (existingEmail) {
-          return res.status(400).json({ message: 'Email is already registered.' });
-        }
-
-        // Check for existing phone
-        const existingPhone = await User.findOne({ phone });
-        if (existingPhone) {
-          return res.status(400).json({ message: 'Phone number is already registered.' });
-        }
-
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Create user
-        const newUser = new User({
-          fname,
-          lname,
-          email,
-          phone,
-          password: hashedPassword
-        });
-
-        await newUser.save();
-        res.status(201).json({ message: 'Account created successfully!' });
-      } catch (err) {
-        console.error('Registration error:', err);
-        res.status(500).json({ message: 'Something went wrong, please try again later.' });
-      }
-    });
-
-    // Start the server
     app.listen(port, () => {
       console.log(`🚀 Server running on http://localhost:${port}`);
     });
-
   })
   .catch((err) => {
-    console.error('❌ MongoDB Atlas connection error:', err);
+    console.error('❌ MongoDB connection error:', err);
   });
